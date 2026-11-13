@@ -62,8 +62,8 @@ docker run -d --name intune-packager -p 8000:8000 \
 ```
 
 For Foundry, `FOUNDRY_RESOURCE` is the `<name>` in `https://<name>.services.ai.azure.com` and `FOUNDRY_MODEL` is
-the name of your deployment, so use whatever you named it in the Foundry portal. DeepSeek and GPT deployments go
-through the OpenAI-compatible API automatically.
+the name of your deployment, so use whatever you named it in the Foundry portal. GPT deployments use the Responses
+API and DeepSeek deployments use chat completions, picked automatically from the name (see [AI provider](#ai-provider)).
 
 To build it yourself instead:
 
@@ -89,7 +89,17 @@ Choose the provider with `LLM_PROVIDER`.
 | Provider | Variables | Notes |
 |---|---|---|
 | `openrouter` | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default `deepseek/deepseek-v4.1-flash`) | Any OpenRouter model that supports tool calling |
-| `foundry` | `FOUNDRY_RESOURCE` or `FOUNDRY_ENDPOINT`, `FOUNDRY_API_KEY`, `FOUNDRY_MODEL` (deployment name, default `claude-opus-5-5`) | Deployments whose name starts with `claude` use the Anthropic Messages API through the official `anthropic` SDK (`AnthropicFoundry`). All other deployments use the OpenAI-compatible `/openai/v1/chat/completions`. Override this with `FOUNDRY_API_STYLE=anthropic\|openai`. |
+| `foundry` | `FOUNDRY_RESOURCE` or `FOUNDRY_ENDPOINT`, `FOUNDRY_API_KEY`, `FOUNDRY_MODEL` (deployment name, default `claude-opus-5-5`) | The API is picked from the deployment name, see below. |
+
+On Foundry, `FOUNDRY_API_STYLE=auto` picks the API from the deployment name:
+
+| Deployment name | API |
+|---|---|
+| `claude-*` | Anthropic Messages API through the official `anthropic` SDK (`AnthropicFoundry`) |
+| `gpt-*`, `o3*`, `o4*`, `codex-*` | OpenAI Responses API (`/openai/v1/responses`). Reasoning is kept between tool calls, and some models such as the codex and pro models only work here. |
+| anything else (DeepSeek, Llama, Mistral, Grok, …) | Chat completions (`/openai/v1/chat/completions`) |
+
+If you named a deployment differently, set `FOUNDRY_API_STYLE=anthropic`, `responses` or `chat` yourself.
 
 Optional Foundry settings:
 
@@ -97,7 +107,8 @@ Optional Foundry settings:
 - `FOUNDRY_AUTH_HEADER=bearer`: for OpenAI-style endpoints that expect `Authorization: Bearer`.
 - `FOUNDRY_API_VERSION`: only for legacy endpoints that still need it.
 
-`CLAUDE_EFFORT` (default `high`) sets the effort level for Claude models.
+`CLAUDE_EFFORT` (default `high`) sets the effort level for Claude models. `OPENAI_REASONING_EFFORT` does the same
+for OpenAI models on the Responses API (empty = model default).
 
 ## Access protection
 

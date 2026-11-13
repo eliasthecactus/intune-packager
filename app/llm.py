@@ -1,14 +1,16 @@
 """Provider-neutral chat sessions with tool calling.
 
-* OpenRouter                     -> OpenAI-compatible /chat/completions
-* Microsoft Foundry, OpenAI API  -> {endpoint}/openai/v1/chat/completions
-* Microsoft Foundry, Claude      -> Anthropic Messages API via the official SDK (AsyncAnthropicFoundry)
+* OpenRouter                       -> OpenAI-compatible /chat/completions
+* Microsoft Foundry, OpenAI models -> {endpoint}/openai/v1/responses (Responses API)
+* Microsoft Foundry, other models  -> {endpoint}/openai/v1/chat/completions (DeepSeek, Llama, Mistral, ...)
+* Microsoft Foundry, Claude        -> Anthropic Messages API via the official SDK (AsyncAnthropicFoundry)
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
@@ -66,6 +68,33 @@ class ChatSession(ABC):
 
     @abstractmethod
     def add_user_message(self, text: str) -> None: ...
+
+
+async def _post_json(url: str, headers: dict, params: dict, body: dict) -> dict:
+    """POST with retries on rate limits and transient errors."""
+    delay = 3.0
+    async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=20.0)) as client:
+        for attempt in range(5):
+            try:
+                resp = await client.post(url, headers=headers, params=params, json=body)
+            except httpx.HTTPError as exc:
+                if attempt == 4:
+                    raise LLMError(f"connection to AI provider failed: {exc}") from exc
+                await asyncio.sleep(delay)
+                delay *= 2
+                continue
+            if resp.status_code in (408, 409, 429, 500, 502, 503, 504) and attempt < 4:
+                retry_after = resp.headers.get("retry-after")
+                await asyncio.sleep(float(retry_after) if retry_after and retry_after.isdigit() else delay)
+                delay *= 2
+                continue
+            if resp.status_code >= 400:
+                raise LLMError(f"AI provider returned HTTP {resp.status_code}: {resp.text[:1500]}")
+            data = resp.json()
+            if data.get("error") and not data.get("choices") and not data.get("output"):
+                raise LLMError(f"AI provider error: {json.dumps(data['error'])[:1500]}")
+            return data
+    raise LLMError("AI provider request failed")
 
 
 # ======================================================================= OpenAI
@@ -126,29 +155,7 @@ class OpenAICompatSession(ChatSession):
         return StepResult(text=text, tool_calls=calls, truncated=choice.get("finish_reason") == "length")
 
     async def _post(self, body: dict) -> dict:
-        delay = 3.0
-        async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=20.0)) as client:
-            for attempt in range(5):
-                try:
-                    resp = await client.post(self.url, headers=self.headers, params=self.params, json=body)
-                except httpx.HTTPError as exc:
-                    if attempt == 4:
-                        raise LLMError(f"connection to AI provider failed: {exc}") from exc
-                    await asyncio.sleep(delay)
-                    delay *= 2
-                    continue
-                if resp.status_code in (408, 409, 429, 500, 502, 503, 504) and attempt < 4:
-                    retry_after = resp.headers.get("retry-after")
-                    await asyncio.sleep(float(retry_after) if retry_after and retry_after.isdigit() else delay)
-                    delay *= 2
-                    continue
-                if resp.status_code >= 400:
-                    raise LLMError(f"AI provider returned HTTP {resp.status_code}: {resp.text[:1500]}")
-                data = resp.json()
-                if "error" in data and not data.get("choices"):
-                    raise LLMError(f"AI provider error: {json.dumps(data['error'])[:1500]}")
-                return data
-        raise LLMError("AI provider request failed")
+        return await _post_json(self.url, self.headers, self.params, body)
 
     def add_tool_results(self, results, note=None):
         for call, content, _is_error in results:
@@ -158,6 +165,83 @@ class OpenAICompatSession(ChatSession):
 
     def add_user_message(self, text):
         self.messages.append({"role": "user", "content": text})
+
+
+# ============================================================ OpenAI Responses
+class ResponsesSession(ChatSession):
+    """OpenAI Responses API. Stateless (store=false): the full item list is sent every turn, including the
+    encrypted reasoning items, so reasoning models keep their chain of thought across tool calls."""
+
+    def __init__(self, system: str, tools: list[dict], *, base_url: str, headers: dict, model: str,
+                 params: dict | None = None, reasoning_effort: str | None = None):
+        super().__init__(system, tools)
+        self.url = base_url.rstrip("/") + "/responses"
+        self.headers = headers
+        self.model = model
+        self.params = params or {}
+        self.reasoning_effort = reasoning_effort
+        self.items: list[dict] = []
+        self.r_tools = [{"type": "function", "name": t["name"], "description": t["description"],
+                         "parameters": t["parameters"]} for t in tools]
+
+    async def step(self) -> StepResult:
+        body: dict = {
+            "model": self.model,
+            "instructions": self.system,
+            "input": self.items,
+            "tools": self.r_tools,
+            "tool_choice": "auto",
+            "max_output_tokens": settings.llm_max_tokens,
+            "store": False,
+            "include": ["reasoning.encrypted_content"],
+        }
+        if self.reasoning_effort:
+            body["reasoning"] = {"effort": self.reasoning_effort}
+        data = await _post_json(self.url, self.headers, self.params, body)
+
+        usage = data.get("usage") or {}
+        self.usage.requests += 1
+        self.usage.input_tokens += usage.get("input_tokens", 0) or 0
+        self.usage.output_tokens += usage.get("output_tokens", 0) or 0
+        self.usage.cached_tokens += (usage.get("input_tokens_details") or {}).get("cached_tokens", 0) or 0
+
+        calls: list[ToolCall] = []
+        texts: list[str] = []
+        for item in data.get("output") or []:
+            kind = item.get("type")
+            if kind == "message":
+                for part in item.get("content") or []:
+                    if part.get("type") == "output_text":
+                        texts.append(part.get("text", ""))
+                    elif part.get("type") == "refusal":
+                        texts.append(f"[model refused: {part.get('refusal', '')}]")
+            elif kind == "function_call":
+                raw = item.get("arguments") or "{}"
+                try:
+                    args, err = (json.loads(raw) if raw.strip() else {}), None
+                    if not isinstance(args, dict):
+                        args, err = {}, "arguments must be a JSON object"
+                except json.JSONDecodeError as exc:
+                    args, err = {}, f"invalid JSON arguments: {exc}"
+                calls.append(ToolCall(id=item.get("call_id") or f"call_{len(calls)}", name=item.get("name", ""),
+                                      arguments=args, parse_error=err))
+            # every output item (reasoning, message, function_call) goes back as input next turn
+            self.items.append({k: v for k, v in item.items() if v is not None})
+
+        incomplete = (data.get("incomplete_details") or {}).get("reason")
+        if data.get("status") == "incomplete" and incomplete == "content_filter":
+            raise LLMError("The model's response was blocked by the content filter.")
+        return StepResult(text="".join(texts), tool_calls=calls,
+                          truncated=data.get("status") == "incomplete" and incomplete == "max_output_tokens")
+
+    def add_tool_results(self, results, note=None):
+        for call, content, _is_error in results:
+            self.items.append({"type": "function_call_output", "call_id": call.id, "output": content})
+        if note:
+            self.add_user_message(note)
+
+    def add_user_message(self, text):
+        self.items.append({"role": "user", "content": text})
 
 
 # ==================================================================== Anthropic
@@ -226,11 +310,20 @@ class AnthropicSession(ChatSession):
 
 
 # ====================================================================== factory
+_OPENAI_MODEL = re.compile(r"^(gpt|o\d|codex|computer-use|chatgpt)", re.IGNORECASE)
+
+
 def _foundry_style() -> str:
+    """anthropic | responses | chat"""
     style = settings.foundry_api_style
-    if style == "auto":
-        return "anthropic" if settings.foundry_model.lower().startswith("claude") else "openai"
-    return style
+    if style == "openai":  # older name for chat completions
+        return "chat"
+    if style in ("anthropic", "responses", "chat"):
+        return style
+    model = settings.foundry_model
+    if model.lower().startswith("claude"):
+        return "anthropic"
+    return "responses" if _OPENAI_MODEL.match(model) else "chat"
 
 
 def _foundry_host() -> str:
@@ -285,5 +378,8 @@ def create_session(system: str, tools: list[dict]) -> ChatSession:
     headers = ({"Authorization": f"Bearer {settings.foundry_api_key}"} if settings.foundry_auth_header == "bearer"
                else {"api-key": settings.foundry_api_key or ""})
     params = {"api-version": settings.foundry_api_version} if settings.foundry_api_version else {}
+    if _foundry_style() == "responses":
+        return ResponsesSession(system, tools, base_url=endpoint, headers=headers, model=settings.foundry_model,
+                                params=params, reasoning_effort=settings.openai_reasoning_effort)
     return OpenAICompatSession(system, tools, base_url=endpoint, headers=headers, model=settings.foundry_model,
                                params=params, token_param="max_completion_tokens")

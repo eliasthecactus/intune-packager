@@ -37,7 +37,8 @@ class Settings:
     foundry_endpoint: str | None = field(default_factory=lambda: _env("FOUNDRY_ENDPOINT"))
     foundry_api_key: str | None = field(default_factory=lambda: _env("FOUNDRY_API_KEY"))
     foundry_model: str = field(default_factory=lambda: _env("FOUNDRY_MODEL", "claude-opus-5-5"))
-    # auto = Claude deployments use the Anthropic Messages API, everything else the OpenAI v1 API
+    # auto | anthropic | responses | chat. auto = Claude -> Anthropic Messages API, OpenAI models (gpt-*, o*,
+    # codex-*) -> Responses API, everything else -> chat completions
     foundry_api_style: str = field(default_factory=lambda: (_env("FOUNDRY_API_STYLE", "auto") or "auto").lower())
     foundry_auth_header: str = field(default_factory=lambda: (_env("FOUNDRY_AUTH_HEADER", "api-key") or "api-key").lower())
     foundry_api_version: str | None = field(default_factory=lambda: _env("FOUNDRY_API_VERSION"))
@@ -46,6 +47,8 @@ class Settings:
 
     # Claude effort level (low|medium|high|xhigh|max); empty = model default
     claude_effort: str | None = field(default_factory=lambda: _env("CLAUDE_EFFORT", "high"))
+    # OpenAI reasoning effort for the Responses API (minimal|low|medium|high|xhigh); empty = model default
+    openai_reasoning_effort: str | None = field(default_factory=lambda: _env("OPENAI_REASONING_EFFORT"))
     llm_max_tokens: int = field(default_factory=lambda: _int("LLM_MAX_TOKENS", 16000))
     agent_max_steps: int = field(default_factory=lambda: _int("AGENT_MAX_STEPS", 60))
 
