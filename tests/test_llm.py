@@ -19,7 +19,8 @@ def _with_settings(monkeypatch, **kw):
 def test_foundry_style_routing(monkeypatch):
     cases = {"claude-opus-5-5": "anthropic", "gpt-5.1": "responses", "GPT-5-codex": "responses",
              "o4-mini": "responses", "codex-mini": "responses", "DeepSeek-V3.2": "chat",
-             "Llama-4-Maverick": "chat", "grok-4": "chat", "mistral-large": "chat"}
+             "Llama-4-Maverick": "chat", "grok-4": "chat", "mistral-large": "chat",
+             "Kimi-K3.1-Pro": "chat", "DeepSeek-V4.1-Flash-1017": "chat", "gpt-6.1-sol": "responses", "gpt-6-astra": "responses"}
     for model, style in cases.items():
         _with_settings(monkeypatch, foundry_model=model, foundry_api_style="auto")
         assert llm._foundry_style() == style, model

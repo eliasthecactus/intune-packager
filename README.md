@@ -43,7 +43,7 @@ docker run -d --name intune-packager -p 8000:8000 \
   -e LLM_PROVIDER=foundry \
   -e FOUNDRY_RESOURCE=my-foundry-resource \
   -e FOUNDRY_API_KEY=... \
-  -e FOUNDRY_MODEL=DeepSeek-V3.2 \
+  -e FOUNDRY_MODEL=DeepSeek-V4.1-Flash-1017 \
   -e SHARED_KEY=change-me \
   ghcr.io/eliasthecactus/intune-packager:latest
 ```
@@ -56,7 +56,7 @@ docker run -d --name intune-packager -p 8000:8000 \
   -e LLM_PROVIDER=foundry \
   -e FOUNDRY_RESOURCE=my-foundry-resource \
   -e FOUNDRY_API_KEY=... \
-  -e FOUNDRY_MODEL=gpt-5.1 \
+  -e FOUNDRY_MODEL=gpt-6.1-sol \
   -e SHARED_KEY=change-me \
   ghcr.io/eliasthecactus/intune-packager:latest
 ```
