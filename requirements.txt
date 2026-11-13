@@ -1,0 +1,8 @@
+fastapi==0.162.5
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+python-multipart==0.0.33
+pefile==2024.8.26
+pillow==13.0.0
+cryptography==50.0.2
+anthropic==2.8.0

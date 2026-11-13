@@ -1,0 +1,13 @@
+services:
+  intune-packager:
+    build: .
+    image: intune-packager:latest
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - packager-data:/data
+    restart: unless-stopped
+
+volumes:
+  packager-data:

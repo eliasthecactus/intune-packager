@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Intune Packager</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/static/favicon.svg" alt="" width="28" height="28">
+      <span>Intune Packager</span>
+    </div>
+    <div class="topbar-right">
+      <span id="provider" class="badge" hidden></span>
+      <button id="logout" class="link" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="config-error" class="card notice error" hidden></section>
+
+    <!-- Access key -->
+    <section id="login" class="card narrow" hidden>
+      <h1>Access key required</h1>
+      <p class="muted">This instance is protected. Enter the shared access key.</p>
+      <form id="login-form" class="stack">
+        <input id="login-key" type="password" autocomplete="current-password" placeholder="Access key" required>
+        <button type="submit" class="primary">Continue</button>
+        <p id="login-error" class="error-text" hidden></p>
+      </form>
+    </section>
+
+    <!-- New job -->
+    <section id="new-job" class="card" hidden>
+      <h1>Package an app for Intune</h1>
+      <p class="muted">Upload installers, scripts or whole folders, describe what you need, or both. The AI analyses
+        the files, researches silent parameters and returns a ready-to-upload <code>.intunewin</code> with commands,
+        detection rules, logo and documentation.</p>
+
+      <form id="job-form" class="stack">
+        <div id="dropzone" class="dropzone" tabindex="0">
+          <svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <p><strong>Drop files or folders here</strong></p>
+          <p class="muted small">EXE, MSI, MSIX, ZIP, scripts, config files … (optional)</p>
+          <div class="row">
+            <button type="button" id="pick-files" class="secondary">Choose files</button>
+            <button type="button" id="pick-folder" class="secondary">Choose folder</button>
+          </div>
+          <input id="file-input" type="file" multiple hidden>
+          <input id="folder-input" type="file" webkitdirectory multiple hidden>
+        </div>
+
+        <div id="file-list-wrap" hidden>
+          <div class="row between">
+            <span id="file-summary" class="muted small"></span>
+            <button type="button" id="clear-files" class="link">Remove all</button>
+          </div>
+          <ul id="file-list" class="file-list"></ul>
+        </div>
+
+        <label for="description" class="label">What do you need? <span class="muted">(optional if you upload files)</span></label>
+        <textarea id="description" rows="5" placeholder="e.g. &quot;Install for all users, no desktop shortcut, server address is app.example.com&quot;&#10;or just a product name: &quot;Google Chrome Enterprise x64&quot;&#10;or extra parameters, license values, how detection should work …"></textarea>
+
+        <div class="row between wrap">
+          <span class="muted small" id="limit-hint"></span>
+          <button type="submit" id="submit" class="primary">Create package</button>
+        </div>
+        <div id="upload-progress" class="progress" hidden><div class="bar"></div></div>
+        <p id="form-error" class="error-text" hidden></p>
+      </form>
+    </section>
+
+    <!-- Progress -->
+    <section id="progress" class="card" hidden>
+      <div class="row between">
+        <h1 id="progress-title"><span class="spinner"></span>Working on it …</h1>
+        <span id="elapsed" class="muted small"></span>
+      </div>
+      <p class="muted small">This usually takes 2–10 minutes. You can leave this page open; it reconnects after a reload.</p>
+      <ol id="events" class="events"></ol>
+    </section>
+
+    <!-- Result -->
+    <section id="result" class="card" hidden>
+      <div class="result-head">
+        <img id="result-logo" alt="" width="64" height="64" hidden>
+        <div>
+          <p id="result-status" class="status"></p>
+          <h1 id="result-title"></h1>
+          <p id="result-sub" class="muted"></p>
+        </div>
+      </div>
+      <div id="quick" class="quick"></div>
+      <div class="row wrap">
+        <a id="download" class="button primary" href="#">Download zip</a>
+        <button id="restart" class="secondary">Package another app</button>
+      </div>
+      <p id="usage" class="muted small"></p>
+      <details open>
+        <summary>Full documentation (README.md)</summary>
+        <article id="readme" class="markdown"></article>
+      </details>
+      <details>
+        <summary>Activity log</summary>
+        <ol id="events-final" class="events"></ol>
+      </details>
+    </section>
+
+    <!-- Failure -->
+    <section id="failed" class="card" hidden>
+      <h1>Something went wrong</h1>
+      <p id="failed-msg" class="error-text"></p>
+      <details><summary>Activity log</summary><ol id="events-failed" class="events"></ol></details>
+      <button id="restart-failed" class="secondary">Try again</button>
+    </section>
+  </main>
+
+  <footer class="muted small">AI-generated packages: review scripts and test on a pilot device before broad deployment.</footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>
