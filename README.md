@@ -18,12 +18,59 @@ If a silent deployment isn't possible, the app says so, explains why and lists w
 
 ## Quick start (Docker)
 
+A prebuilt image for amd64 and arm64 is published to `ghcr.io/eliasthecactus/intune-packager`. Pick one of the
+commands below, fill in your key and open http://localhost:8000. `SHARED_KEY` is optional but recommended as soon
+as anyone else can reach the port. All other settings from [.env.example](.env.example) can be added with more `-e`
+flags.
+
+**OpenRouter**
+
+```bash
+docker run -d --name intune-packager -p 8000:8000 \
+  -v intune-packager-data:/data --restart unless-stopped \
+  -e LLM_PROVIDER=openrouter \
+  -e OPENROUTER_API_KEY=sk-or-... \
+  -e OPENROUTER_MODEL=deepseek/deepseek-v4.1-flash \
+  -e SHARED_KEY=change-me \
+  ghcr.io/eliasthecactus/intune-packager:latest
+```
+
+**Microsoft Foundry with DeepSeek**
+
+```bash
+docker run -d --name intune-packager -p 8000:8000 \
+  -v intune-packager-data:/data --restart unless-stopped \
+  -e LLM_PROVIDER=foundry \
+  -e FOUNDRY_RESOURCE=my-foundry-resource \
+  -e FOUNDRY_API_KEY=... \
+  -e FOUNDRY_MODEL=DeepSeek-V3.2 \
+  -e SHARED_KEY=change-me \
+  ghcr.io/eliasthecactus/intune-packager:latest
+```
+
+**Microsoft Foundry with ChatGPT**
+
+```bash
+docker run -d --name intune-packager -p 8000:8000 \
+  -v intune-packager-data:/data --restart unless-stopped \
+  -e LLM_PROVIDER=foundry \
+  -e FOUNDRY_RESOURCE=my-foundry-resource \
+  -e FOUNDRY_API_KEY=... \
+  -e FOUNDRY_MODEL=gpt-5.1 \
+  -e SHARED_KEY=change-me \
+  ghcr.io/eliasthecactus/intune-packager:latest
+```
+
+For Foundry, `FOUNDRY_RESOURCE` is the `<name>` in `https://<name>.services.ai.azure.com` and `FOUNDRY_MODEL` is
+the name of your deployment, so use whatever you named it in the Foundry portal. DeepSeek and GPT deployments go
+through the OpenAI-compatible API automatically.
+
+To build it yourself instead:
+
 ```bash
 cp .env.example .env        # add your AI provider key, optionally SHARED_KEY
 docker compose up -d --build
 ```
-
-Then open http://localhost:8000.
 
 ## Quick start (local)
 
